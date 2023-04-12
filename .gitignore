@@ -1,4 +1,7 @@
 *~
+fontconvert
+fonts/gfx
+icons/pngs
 
 # Prerequisites
 *.d
