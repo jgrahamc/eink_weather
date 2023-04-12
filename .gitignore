@@ -2,6 +2,7 @@
 fontconvert
 fonts/gfx
 icons/pngs
+params.h
 
 # Prerequisites
 *.d
