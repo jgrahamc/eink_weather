@@ -14,3 +14,6 @@ uint sleep_time = (30*60);
 const char *api_key = "TODO";
 const char *lat     = "TODO";
 const char *lon     = "TODO";
+
+// The title to show at the top of the display
+const char *title   = "TODO";
