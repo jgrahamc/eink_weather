@@ -26,6 +26,20 @@ const GFXfont *fontFooter = &Roboto_Regular10pt8b;
 
 Inkplate ink(INKPLATE_3BIT);
 
+// This structure and the array are used to blend the historical weather
+// forecast with an up to date forecast. That way the hourly data shown
+// for 48 hours is a mix of what was predicted at midnight today and what
+// is predicted now. 
+
+#define ICON_SIZE 64
+struct hour_slot {
+  uint32_t when;
+  float    temperature;
+  char     icon[ICON_SIZE];
+  
+};
+struct hour_slot hours[48];
+
 // setup runs the entire program and then goes to sleep.
 void setup() {
   ink.begin();
@@ -158,20 +172,21 @@ void flushRight(int16_t y, const char *text, const GFXfont *f) {
 #define SMALL_IMAGE 43
 #define LARGE_IMAGE 128
 
-// centreIcon draws an image cenetred at the x, y position. If the
-// image name is partly-cloudy-day and the size s is 43 then this
+// centreIcon draws an icon cenetred at the x, y position. If the
+// icon name is partly-cloudy-day and the size s is 43 then this
 // will load partly-cloudy-day-42.png.
 void centreIcon(int16_t x, int16_t y, const char *img, int16_t s) {
   char tmp[100];
   sprintf(tmp, "%s-%d.png", img, s);
 
-  // This assumes that images are squares
+  // This assumes that icon are squares
   
   ink.drawImage(tmp, x-s/2, y-s/2);
 }
 
 // drawRectangle draws a rectangle given the top left corner and 
-// width and height
+// width and height. We don't use the built in ink.drawRect because
+// the lines are thinner than a one pixel line drawn by drawThickLine.
 void drawRectangle(int16_t x0, int16_t y0, int16_t w, int16_t h) {
   int16_t x1 = x0 + w;
   int16_t y1 = y0 + h;
@@ -239,7 +254,7 @@ const char *cacert = \
 // callAPI calls the Pirate Weather API with a set of excluded sections (which
 // must not be empty) and an epoch time for when the weather forecast should
 // start. Either returns the HTTP body as a String or an empty string for an
-// error.
+// error. If when is zero then gets the current forecast.
 String callAPI(char *exclude, uint32_t when) {
   WiFiClientSecure tls;
   tls.setCACert(cacert);
@@ -250,31 +265,43 @@ String callAPI(char *exclude, uint32_t when) {
 
   const char *api_format = \
     "https://api.pirateweather.net/forecast/" \
-    "%s/%s,%s,%d"                             \
+    "%s/%s,%s%s"                              \
     "?units=si"                               \
     "&exclude=%s";
 
   char api[220];
-  sprintf(api, api_format, api_key, lat, lon, when, exclude);
+  char whens[32] = "";
+  if (when != 0) {
+    sprintf(whens, ",%d", when);
+  }
+  sprintf(api, api_format, api_key, lat, lon, whens, exclude);
   Serial.println(api);
 
-  if (!http.begin(tls, api)) {
-    fatal("http.begin failed");
-    return "";
+  int retries = 0;
+
+  // Retry API calls at most five times with two seconds between
+  // retries.
+
+  while (retries < 5) {
+    if (http.begin(tls, api)) {
+      int code = http.GET();
+      if (code == 200) {
+        return http.getString();
+      }
+    }
+    
+    retries += 1;
+    delay(2000);
   }
 
-  int code = http.GET();
-  if (code != 200) {
-    fatal("HTTP GET failed " + String(code));
-    return "";
-  }
-
-  return http.getString();
+  return "";
 }
 
 // showWeather gets and displays the weather forecast on screen.
 void showWeather() {
 
+  // Step 1.
+  //
   // Since the hourly section of the Pirate Weather API returns the next
   // 48 hours and we want today and tomorrow we need to ask for midnight
   // today. This is done by retrieving the time now from the RTC. But there's
@@ -291,7 +318,7 @@ void showWeather() {
     return;
   }
   
-  String response = callAPI("currently,minutely,hourly,daily,alerts", now);
+  String response = callAPI("currently,minutely,hourly,daily,alerts", 0);
 
   if (response == "") {
     return;
@@ -331,10 +358,13 @@ void showWeather() {
   
   uint32_t midnight = now - int(offset * SECONDS_PER_HOUR);
   seconds_since_midnight -= midnight;
-  
-  // Now get the actual weather forecast from the calculated local midnight.
 
-  response = callAPI("currently,minutely,alerts", midnight);
+  // Step 2.
+  //
+  // Now get the historial weather forecast from the calculated local midnight and insert
+  // it into the hours array.
+
+  response = callAPI("currently,daily,minutely,alerts", midnight);
 
   if (response == "") {
     return;
@@ -347,6 +377,50 @@ void showWeather() {
     fatal("Deserialize JSON failed " + String(err.c_str()));
     return;
   }
+
+  int i = 0;
+  
+  JsonObject hourly = doc["hourly"];
+  for (JsonObject hourly_data_item : hourly["data"].as<JsonArray>()) {
+    hours[i].when = hourly_data_item["time"];
+    hours[i].temperature = hourly_data_item["temperature"];
+    strcpy(hours[i].icon, hourly_data_item["icon"]);
+    i += 1;
+  }
+
+  // Step 3.
+  //
+  // Then get the current forecast and overwrite entries in the hours
+  // array so we blend the historical forecast and the current one.
+
+  response = callAPI("currently,minutely,alerts", 0);
+
+  if (response == "") {
+    return;
+  }
+  
+  doc.clear();
+  err = deserializeJson(doc, response);
+  
+  if (err) {
+    fatal("Deserialize JSON failed " + String(err.c_str()));
+    return;
+  }
+
+  hourly = doc["hourly"];
+  for (JsonObject hourly_data_item : hourly["data"].as<JsonArray>()) {
+    for (i = 0; i < 48; i++) {
+      if (hours[i].when == hourly_data_item["time"]) {
+        hours[i].temperature = hourly_data_item["temperature"];
+        strcpy(hours[i].icon, hourly_data_item["icon"]);
+      }
+    }
+  }
+
+  // Step 4. 
+  //
+  // Draw the hourly data on screen and since the last API call included the data 
+  // for the next 7 days draw the daily forecast as well.
 
   int16_t bar_start_x = 50;
   int16_t bar_start_y = 200;
@@ -383,21 +457,18 @@ void showWeather() {
   int16_t short_tick = 5;
   int16_t long_tick = 10;
 
-  int count = 0;
   int16_t last_x = -1;
   char last[128];  
-  JsonObject hourly = doc["hourly"];
-  for (JsonObject hourly_data_item : hourly["data"].as<JsonArray>()) {
+  for (i = 0; i < 48; i++) {
     ink.drawThickLine(bar_x, bar_y+bar_height, bar_x,
-      bar_y+bar_height+((count%2==0)?short_tick:long_tick), 0, 1);
+      bar_y+bar_height+((i%2==0)?short_tick:long_tick), 0, 1);
     
-    if ((count % 2) == 0) {  
-      uint32_t when = hourly_data_item["time"];
+    if ((i % 2) == 0) {  
       char hour[HHMM_SIZE];
-      hhmm(when, offset, &hour[0]);
+      hhmm(hours[i].when, offset, &hour[0]);
       char temp[TEMP_SIZE];
-      roundTemp(hourly_data_item["temperature"], &temp[0]);
-      if (count == 0) {
+      roundTemp(hours[i].temperature, &temp[0]);
+      if (i == 0) {
         pr(bar_x, bar_y+bar_height+short_tick+12, hour, fontSmall);        
         pr(bar_x, bar_y+bar_height+short_tick+36, temp, fontMedium);
       } else {
@@ -407,26 +478,23 @@ void showWeather() {
       ink.print("\xba");
     }  
 
-    const char* icon = hourly_data_item["icon"];
     if (last_x == -1) {
-      strcpy(last, icon);
+      strcpy(last, hours[i].icon);
       last_x = bar_x;
     } else {
-      if (strcmp(last, icon) != 0) {
+      if (strcmp(last, hours[i].icon) != 0) {
         ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+bar_height, 0, 1);
         centreIcon(last_x + (bar_x - last_x)/2, bar_y+bar_height/2, last, SMALL_IMAGE);
-        strcpy(last, icon);
+        strcpy(last, hours[i].icon);
         last_x = bar_x;
       }
     }
 
     bar_x += bar_hour_spacing;
-    count += 1;
-    if (count == 24) {
+    if ((i%24) == 23) {
       centreIcon(last_x + (bar_x - last_x)/2, bar_y+bar_height/2, last, SMALL_IMAGE);      
       bar_x = bar_start_x;
       bar_y += bar_height+bar_gap;
-      count = 0;
       last_x = -1;
     }
   }
@@ -440,7 +508,7 @@ void showWeather() {
   drawRectangle(bar_x, bar_y, bar_width, bar_height);
   pr(bar_x, bar_y-7, "Next 7 Days", fontMedium);
 
-  count = 0;
+  int count = 0;
   JsonObject daily = doc["daily"];
   for (JsonObject daily_data_item : daily["data"].as<JsonArray>()) {
     ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+bar_height, 0, 1);
@@ -472,10 +540,12 @@ void showWeather() {
     }
   }
 
-  // Now make a third API call to just get the minute-by-minute rain for the current
-  // hour.
+  // Step 5.
+  //
+  // Now make another API call to just get the minute-by-minute rain for the current
+  // hour and draw that on screen.
 
-  response = callAPI("daily,hourly,alerts", getRtcNow());
+  response = callAPI("daily,hourly,alerts", 0);
 
   if (response == "") {
     return;
@@ -499,19 +569,19 @@ void showWeather() {
   drawRectangle(bar_x, bar_y, bar_width, bar_height);
   pr(bar_x, bar_y-6, "Rain Next 60 Minutes", fontMedium);
 
-  int max_rain = 10;
+  float max_rain = 4;
 
   count = 0;
   int16_t centre_x;
   JsonObject minutely = doc["minutely"];
   for (JsonObject minutely_data_item : minutely["data"].as<JsonArray>()) {
-    int rain = minutely_data_item["precipIntensity"];
+    float rain = minutely_data_item["precipIntensity"];
     if (rain > max_rain) {
       rain = max_rain;
     }
 
     if (rain > 0) {
-      ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+(bar_height*rain/max_rain), 0, 1);
+      ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+(bar_height*(rain/max_rain)), 0, 1);
     }
 
     if ((count % 10) == 0) {
@@ -535,6 +605,11 @@ void showWeather() {
     bar_x += rain_width;
   }
 
+  // Step 6.
+  //
+  // Using data about the current forecast show the title and when the forecast
+  // was last checked and local observations (weather and temperature).
+
   JsonObject currently = doc["currently"];
   const char *icon = currently["icon"]; 
   float c = currently["apparentTemperature"];
@@ -542,14 +617,18 @@ void showWeather() {
 
   char temp[TEMP_SIZE];
   roundTemp(c, &temp[0]);
-  pr(200, 80, "Personalized Weather", fontLarge);
+  pr(200, 80, title, fontLarge);
   char hm[HHMM_SIZE];
   hhmm(getRtcNow(), offset, &hm[0]);
-  char title[80];
-  sprintf(title, "Forecast checked at %s. It's %s\xba right now.", hm, temp);
+  char subtitle[80];
+  sprintf(subtitle, "Forecast checked at %s. It's %s\xba right now.", hm, temp);
   
-  pr(200, 150, title, fontLarge);
+  pr(200, 150, subtitle, fontLarge);
   centreIcon(bar_start_x+64, 100, icon, LARGE_IMAGE);
+
+  // Step 7.
+  //
+  // Add the status bar at the bottom
 
   addStatus(offset, tz);
   show();
