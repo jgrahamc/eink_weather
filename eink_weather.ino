@@ -275,7 +275,6 @@ String callAPI(char *exclude, uint32_t when) {
     sprintf(whens, ",%d", when);
   }
   sprintf(api, api_format, api_key, lat, lon, whens, exclude);
-  Serial.println(api);
 
   int retries = 0;
 
@@ -319,7 +318,6 @@ void showWeather() {
   }
   
   String response = callAPI("currently,minutely,hourly,daily,alerts", 0);
-
   if (response == "") {
     return;
   }
@@ -365,7 +363,6 @@ void showWeather() {
   // it into the hours array.
 
   response = callAPI("currently,daily,minutely,alerts", midnight);
-
   if (response == "") {
     return;
   }
@@ -394,7 +391,6 @@ void showWeather() {
   // array so we blend the historical forecast and the current one.
 
   response = callAPI("currently,minutely,alerts", 0);
-
   if (response == "") {
     return;
   }
@@ -546,7 +542,6 @@ void showWeather() {
   // hour and draw that on screen.
 
   response = callAPI("daily,hourly,alerts", 0);
-
   if (response == "") {
     return;
   }
@@ -630,22 +625,21 @@ void showWeather() {
   //
   // Add the status bar at the bottom
 
-  addStatus(offset, tz);
-  show();
-}
+  uint32_t timenow = getRtcNow();
+  char hmnow[HHMM_SIZE];
+  hhmm(timenow, offset, &hmnow[0]);
+  char hmnext[HHMM_SIZE];
+  hhmm(timenow+sleep_time, offset, &hmnext[0]);
 
-// addStatus writes a line of information containing time, temperature of the 
-// device, and battery status at the bottom of the screen flushed to the right.
-void addStatus(float offset, const char *tz) {
-  int8_t  t = ink.readTemperature();
-  double  v = ink.readBattery();
-  int16_t h = ink.height();
-  char temp[255];
-  char hm[HHMM_SIZE];
-  hhmm(getRtcNow(), offset, &hm[0]);
-  sprintf(temp, "Updated: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv", 
-    hm, tz, offset, t, v);
-  flushRight(h-20, temp, fontSmall);
+  JsonObject flags = doc["flags"];
+  const char *version = flags["version"];
+  
+  char status_bar[255];
+  sprintf(status_bar, "Updated: %s - Next update: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv - API %s", 
+    hmnow, hmnext, tz, offset, ink.readTemperature(), ink.readBattery(), version);
+  flushRight(ink.height()-20, status_bar, fontSmall);
+
+  show();
 }
 
 // clear clears the display
