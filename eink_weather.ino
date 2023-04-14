@@ -267,9 +267,10 @@ String callAPI(char *exclude, uint32_t when) {
     "https://api.pirateweather.net/forecast/" \
     "%s/%s,%s%s"                              \
     "?units=%s"                               \
+    "&tz=precise"                             \
     "&exclude=%s";
 
-  char api[220];
+  char api[232];
   char whens[32] = "";
   if (when != 0) {
     sprintf(whens, ",%d", when);
