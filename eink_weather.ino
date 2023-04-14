@@ -266,15 +266,16 @@ String callAPI(char *exclude, uint32_t when) {
   const char *api_format = \
     "https://api.pirateweather.net/forecast/" \
     "%s/%s,%s%s"                              \
-    "?units=si"                               \
+    "?units=%s"                               \
+    "&tz=precise"                             \
     "&exclude=%s";
 
-  char api[220];
+  char api[232];
   char whens[32] = "";
   if (when != 0) {
     sprintf(whens, ",%d", when);
   }
-  sprintf(api, api_format, api_key, lat, lon, whens, exclude);
+  sprintf(api, api_format, api_key, lat, lon, whens, units, exclude);
 
   int retries = 0;
 
