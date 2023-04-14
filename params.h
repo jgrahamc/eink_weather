@@ -16,7 +16,9 @@ const char *lat     = "TODO";
 const char *lon     = "TODO";
 
 // The title to show at the top of the display.
+
 const char *title   = "TODO";
 
 // Units for display, possible values: ca, uk, us, si.
+
 const char *units   = "si";
