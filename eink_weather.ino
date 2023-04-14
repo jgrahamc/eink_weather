@@ -608,7 +608,7 @@ void showWeather() {
 
   JsonObject currently = doc["currently"];
   const char *icon = currently["icon"]; 
-  float c = currently["apparentTemperature"];
+  float c = currently["temperature"];
   uint32_t when = currently["time"];
 
   char temp[TEMP_SIZE];
