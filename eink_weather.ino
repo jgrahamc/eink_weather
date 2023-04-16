@@ -668,6 +668,15 @@ void fatal(String s) {
 // deepSleep puts the device into deep sleep mode for sleep_time
 // seconds. When it wakes up setup() will be called.
 void deepSleep() {
+
+  // This is needed for Inkplate 10's that use the ESP32 WROVER-E
+  // in order to reduce power consumption during sleep.
+  
+  rtc_gpio_isolate(GPIO_NUM_12);
+
+  // The following sets the wake up timer to run after the appropriate
+  // interval (in microseconds) and then goes to sleep.
+  
   esp_sleep_enable_timer_wakeup(sleep_time * 1000000);
   esp_deep_sleep_start();
 }
