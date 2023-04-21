@@ -32,4 +32,5 @@ LiPo charger, SD card, RTC) and the Pirate Weather API.
    
 5. Build the .ino with the Arduino IDE and upload it to the Inkplate.
 
-
+6. Run it either connected via USB-C or a LiPo battery. Since it sleeps
+   drawing microamps the battery should last months between charges.
