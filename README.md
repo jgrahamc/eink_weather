@@ -1,6 +1,9 @@
 # eink-weather
 
-An e-ink weather display based on the Inkplate 10 and the Pirate Weather API.
+An e-ink weather display based on the [Inkplate
+10](https://soldered.com/product/soldered-inkplate-10-9-7-e-paper-board-with-enclosure-copy/)
+(which takes a recycled Kindle display and pairs it with an ESP32,
+LiPo charger, SD card, RTC) and the Pirate Weather API.
 
 ![The display](display.jpg?raw=true "The display in use")
 
