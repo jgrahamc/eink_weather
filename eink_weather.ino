@@ -21,7 +21,6 @@
 const GFXfont *fontSmall  = &Roboto_Regular7pt8b;
 const GFXfont *fontMedium = &Roboto_Bold12pt8b;
 const GFXfont *fontLarge  = &Roboto_Regular24pt8b;
-
 const GFXfont *fontFooter = &Roboto_Regular10pt8b;
 
 Inkplate ink(INKPLATE_3BIT);
@@ -38,20 +37,32 @@ struct hour_slot {
   char     icon[ICON_SIZE];
   
 };
+
 struct hour_slot hours[48];
 
 // setup runs the entire program and then goes to sleep.
 void setup() {
   ink.begin();
-  Serial.begin(115200);
+
+  // Used to record the time when the program woke up. This is used to adjust
+  // the sleep time so that the sleep takes into account how long the board
+  // was awake for an working.
+
+  uint32_t started_at = 0;
+
   if (connectWiFi(wifi_network, wifi_password)) {
-    ink.sdCardInit();
     setRTC();
-    showWeather();
+    started_at = getRtcNow();
+
+    if (ink.sdCardInit() != 0) {
+      showWeather();
+    } else {
+      fatal("SD card failed to initialize");
+    }
     disconnectWiFi();
   }
 
-  deepSleep();
+  deepSleep(started_at);
 }
 
 // loop contains nothing because the entire sketch will be woken up 
@@ -72,12 +83,6 @@ bool connectWiFi(const char *ssid, const char *pass) {
 // disconnectWiFi cleans up the result of connecting via connectWiFi
 void disconnectWiFi() {
   ink.disconnect();
-}
-
-// gtcRtcNow returns the current epoch time from the RTC
-uint32_t getRtcNow() {
-  ink.rtcGetRtcData();
-  return ink.rtcGetEpoch();
 }
 
 // setRTC sets the RTC via NTP
@@ -105,6 +110,12 @@ void setRTC() {
       break;
     }
   }
+}
+
+// gtcRtcNow returns the current epoch time from the RTC
+uint32_t getRtcNow() {
+  ink.rtcGetRtcData();
+  return ink.rtcGetEpoch();
 }
 
 #define SECONDS_PER_HOUR (60*60)
@@ -310,7 +321,6 @@ void showWeather() {
   // offset.
 
   uint32_t now = getRtcNow();
-  Serial.println(now);
 
   // This means that clock hasn't been set
   
@@ -667,16 +677,25 @@ void fatal(String s) {
 
 // deepSleep puts the device into deep sleep mode for sleep_time
 // seconds. When it wakes up setup() will be called.
-void deepSleep() {
+void deepSleep(uint32_t started_at) {
 
   // This is needed for Inkplate 10's that use the ESP32 WROVER-E
   // in order to reduce power consumption during sleep.
   
   rtc_gpio_isolate(GPIO_NUM_12);
 
+  // Calculate how many seconds the sleep time should be adjusted
+  // by by figuring out how long the board was awake.
+
+  uint32_t time_taken = 0;
+
+  if (started_at != 0) {
+    time_taken = getRtcNow() - started_at;
+  }
+
   // The following sets the wake up timer to run after the appropriate
   // interval (in microseconds) and then goes to sleep.
-  
-  esp_sleep_enable_timer_wakeup(sleep_time * 1000000);
+
+  esp_sleep_enable_timer_wakeup((sleep_time - time_taken) * 1000000);
   esp_deep_sleep_start();
 }
