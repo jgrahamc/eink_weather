@@ -40,29 +40,58 @@ struct hour_slot {
 
 struct hour_slot hours[48];
 
+#define SECONDS_PER_HOUR (60*60)
+#define SECONDS_PER_DAY (24*SECONDS_PER_HOUR)
+
+// The default time when the RTC is not set is January 1, 2066 00:00
+
+#define DEFAULT_EPOCH 3029529605
+
 // setup runs the entire program and then goes to sleep.
 void setup() {
   ink.begin();
 
-  // Used to record the time when the program woke up. This is used to adjust
-  // the sleep time so that the sleep takes into account how long the board
-  // was awake for an working.
+  // Figure out which of the update_times[] array is the next minute
+  // past the hour at which the display should update.
 
-  uint32_t started_at = 0;
+  uint32_t now = getRtcNow();
+
+  // These have defaults so that on first start up if the RTC has not been
+  // set the screen will update in 60 seconds time. That should give the
+  // RTC sufficient time to set correctly from NTP.
+
+  uint32_t sleep_time = 60;
+  uint32_t next = now + sleep_time;
+
+  if (now < DEFAULT_EPOCH) {
+    uint32_t this_hour = now / SECONDS_PER_HOUR;
+    this_hour *= SECONDS_PER_HOUR;
+
+    for (int h = 0; h < 2; h++) {
+      for (int i = 0; i < UPDATE_TIMES; i++) {
+        next = this_hour + h * SECONDS_PER_HOUR + update_times[i] * 60;
+        if (next > now) {
+          sleep_time = next - now;
+          h = 2;
+          break;
+        }
+      }
+    }
+  }
 
   if (connectWiFi(wifi_network, wifi_password)) {
     setRTC();
-    started_at = getRtcNow();
 
     if (ink.sdCardInit() != 0) {
-      showWeather();
+      showWeather(now, next);
     } else {
       fatal("SD card failed to initialize");
     }
+
     disconnectWiFi();
   }
 
-  deepSleep(started_at);
+  deepSleep(sleep_time);
 }
 
 // loop contains nothing because the entire sketch will be woken up 
@@ -103,10 +132,8 @@ void setRTC() {
     }
     
     ink.rtcSetEpoch(fromntp);
-
-    // The default time when not set is January 1, 2066 00:00
     
-    if (getRtcNow() < 3029529605) {
+    if (getRtcNow() < DEFAULT_EPOCH) {
       break;
     }
   }
@@ -117,9 +144,6 @@ uint32_t getRtcNow() {
   ink.rtcGetRtcData();
   return ink.rtcGetEpoch();
 }
-
-#define SECONDS_PER_HOUR (60*60)
-#define SECONDS_PER_DAY (24*SECONDS_PER_HOUR)
 
 const char days[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
@@ -309,7 +333,7 @@ String callAPI(char *exclude, uint32_t when) {
 }
 
 // showWeather gets and displays the weather forecast on screen.
-void showWeather() {
+void showWeather(uint32_t update_time, uint32_t next) {
 
   // Step 1.
   //
@@ -636,11 +660,10 @@ void showWeather() {
   //
   // Add the status bar at the bottom
 
-  uint32_t timenow = getRtcNow();
   char hmnow[HHMM_SIZE];
-  hhmm(timenow, offset, &hmnow[0]);
+  hhmm(update_time, offset, &hmnow[0]);
   char hmnext[HHMM_SIZE];
-  hhmm(timenow+sleep_time, offset, &hmnext[0]);
+  hhmm(next, offset, &hmnext[0]);
 
   JsonObject flags = doc["flags"];
   const char *version = flags["version"];
@@ -677,25 +700,16 @@ void fatal(String s) {
 
 // deepSleep puts the device into deep sleep mode for sleep_time
 // seconds. When it wakes up setup() will be called.
-void deepSleep(uint32_t started_at) {
+void deepSleep(uint32_t sleep_time) {
 
   // This is needed for Inkplate 10's that use the ESP32 WROVER-E
   // in order to reduce power consumption during sleep.
-  
+
   rtc_gpio_isolate(GPIO_NUM_12);
-
-  // Calculate how many seconds the sleep time should be adjusted
-  // by by figuring out how long the board was awake.
-
-  uint32_t time_taken = 0;
-
-  if (started_at != 0) {
-    time_taken = getRtcNow() - started_at;
-  }
 
   // The following sets the wake up timer to run after the appropriate
   // interval (in microseconds) and then goes to sleep.
 
-  esp_sleep_enable_timer_wakeup((sleep_time - time_taken) * 1000000);
+  esp_sleep_enable_timer_wakeup(sleep_time * 1000000);
   esp_deep_sleep_start();
 }
