@@ -715,5 +715,10 @@ void deepSleep(uint32_t sleep_time) {
   // interval (in microseconds) and then goes to sleep.
 
   esp_sleep_enable_timer_wakeup(sleep_time * 1000000);
+
+  // This makes the wake up button work
+
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, LOW);
+  
   esp_deep_sleep_start();
 }
