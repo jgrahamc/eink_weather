@@ -65,7 +65,7 @@ TTF_DIR := $(FONTS_DIR)ttf/
 
 $(shell mkdir -p $(GFX_DIR))
 
-FONTS := Roboto_Bold_12 Roboto_Regular_7 Roboto_Regular_10 Roboto_Regular_24
+FONTS := Roboto_Bold_12 Roboto_Regular_7 Roboto_Regular_24
 
 H_FILES := $(addprefix $(GFX_DIR),$(addsuffix .h,$(FONTS)))
 
