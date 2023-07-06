@@ -14,14 +14,16 @@
 #include "params.h"
 
 #include "fonts/gfx/Roboto_Regular_7.h"
-#include "fonts/gfx/Roboto_Regular_10.h"
 #include "fonts/gfx/Roboto_Regular_24.h"
 #include "fonts/gfx/Roboto_Bold_12.h"
 
 const GFXfont *fontSmall  = &Roboto_Regular7pt8b;
 const GFXfont *fontMedium = &Roboto_Bold12pt8b;
 const GFXfont *fontLarge  = &Roboto_Regular24pt8b;
-const GFXfont *fontFooter = &Roboto_Regular10pt8b;
+
+// The default time when the RTC is not set is January 1, 2066 00:00
+
+#define DEFAULT_EPOCH 3029529605
 
 Inkplate ink(INKPLATE_3BIT);
 
@@ -42,10 +44,6 @@ struct hour_slot hours[48];
 
 #define SECONDS_PER_HOUR (60*60)
 #define SECONDS_PER_DAY (24*SECONDS_PER_HOUR)
-
-// The default time when the RTC is not set is January 1, 2066 00:00
-
-#define DEFAULT_EPOCH 3029529605
 
 // setup runs the entire program and then goes to sleep.
 void setup() {
@@ -79,16 +77,20 @@ void setup() {
     }
   }
 
-  if (connectWiFi(wifi_network, wifi_password)) {
-    setRTC();
-
-    if (ink.sdCardInit() != 0) {
-      showWeather(now, next);
+  if (connectWiFi(wifi_count, wifi_networks, wifi_passwords)) {
+    if (setRTC()) {
+      if (ink.sdCardInit() != 0) {
+        showWeather(now, next);
+      } else {
+        fatal("SD card failed to initialize");
+      }
     } else {
-      fatal("SD card failed to initialize");
+      fatal("Failed to set RTC from NTP");
     }
 
     disconnectWiFi();
+  } else {
+    fatal("Failed to connect to WiFi ");
   }
 
   deepSleep(sleep_time);
@@ -100,13 +102,8 @@ void loop() {}
 
 // connectWiFi connects to the passed in WiFi network and returns true
 // if successful.
-bool connectWiFi(const char *ssid, const char *pass) {
-  bool success = ink.joinAP(ssid, pass);
-  if (!success) {
-    fatal("Failed to connect to WiFi " + String(ssid));
-  }
-
-  return success;
+bool connectWiFi(int count, const char **ssids, const char **passes) {
+  return ink.connectWiFiMulti(count, ssids, passes, 23, true);
 }
 
 // disconnectWiFi cleans up the result of connecting via connectWiFi
@@ -114,29 +111,32 @@ void disconnectWiFi() {
   ink.disconnect();
 }
 
-// setRTC sets the RTC via NTP
-void setRTC() {
+// setRTC sets the RTC via NTP and returns true is successful
+bool setRTC() {
 
   // First 0 means no offset from GMT, second 0 means no daylight savings time.
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.cloudflare.com");
+
+  int tries = 5;
   
-  while (true) {
+  while (tries > 0) {
     delay(2000);
+    tries -= 1;
+    
     uint32_t fromntp = time(NULL);
 
     // If time from NTP doesn't look like it's been set then wait
-    
+
     if (fromntp < 1681141968) {
       continue;
     }
     
     ink.rtcSetEpoch(fromntp);
-    
-    if (getRtcNow() < DEFAULT_EPOCH) {
-      break;
-    }
+    return true;
   }
+
+  return false;
 }
 
 // gtcRtcNow returns the current epoch time from the RTC
@@ -312,23 +312,27 @@ String callAPI(char *exclude, uint32_t when) {
   }
   sprintf(api, api_format, api_key, lat, lon, whens, units, exclude);
 
-  int retries = 0;
+  int tries = 5;
 
   // Retry API calls at most five times with two seconds between
   // retries.
 
-  while (retries < 5) {
+  int code;
+
+  while (tries > 0) {
+    tries -= 1;
+    
     if (http.begin(tls, api)) {
-      int code = http.GET();
-      if (code == 200) {
+      code = http.GET();
+      if (code == HTTP_CODE_OK) {
         return http.getString();
       }
     }
     
-    retries += 1;
     delay(2000);
   }
 
+  fatal("Pirate Weather API call failed " + http.errorToString(code));
   return "";
 }
 
@@ -671,7 +675,7 @@ void showWeather(uint32_t update_time, uint32_t next) {
   char status_bar[255];
   sprintf(status_bar, "Updated: %s - Next update: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv - API %s", 
     hmnow, hmnext, tz, offset, ink.readTemperature(), ink.readBattery(), version);
-  flushRight(ink.height()-20, status_bar, fontSmall);
+  centre(ink.width()/2, ink.height()-75, status_bar, fontSmall);
 
   show();
 }
