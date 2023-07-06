@@ -653,7 +653,7 @@ void showWeather(uint32_t update_time, uint32_t next) {
   roundTemp(c, &temp[0]);
   pr(200, 80, title, fontLarge);
   char hm[HHMM_SIZE];
-  hhmm(getRtcNow(), offset, &hm[0]);
+  hhmm(update_time, offset, &hm[0]);
   char subtitle[80];
   sprintf(subtitle, "Forecast checked at %s. It's %s\xba right now.", hm, temp);
   
