@@ -1,4 +1,4 @@
-// eink_weather: this project uses an Inkplate 10 display and the 
+// eink_weather: this project uses an Inkplate 10 display and the
 // Pirate Weather API to get a weather forecast for a given latitude
 // and longitude and display it.
 //
@@ -30,14 +30,13 @@ Inkplate ink(INKPLATE_3BIT);
 // This structure and the array are used to blend the historical weather
 // forecast with an up to date forecast. That way the hourly data shown
 // for 48 hours is a mix of what was predicted at midnight today and what
-// is predicted now. 
+// is predicted now.
 
 #define ICON_SIZE 64
 struct hour_slot {
   uint32_t when;
   float    temperature;
   char     icon[ICON_SIZE];
-  
 };
 
 struct hour_slot hours[48];
@@ -49,38 +48,41 @@ struct hour_slot hours[48];
 void setup() {
   ink.begin();
 
-  // Figure out which of the update_times[] array is the next minute
-  // past the hour at which the display should update.
+  // Default so that on first start up if WiFi doesn't connect then
+  // will try again in 60 seconds.
 
-  uint32_t now = getRtcNow();
-
-  // These have defaults so that on first start up if the RTC has not been
-  // set the screen will update in 60 seconds time. That should give the
-  // RTC sufficient time to set correctly from NTP.
-
-  uint32_t sleep_time = 60;
-  uint32_t next = now + sleep_time;
-
-  if (now < DEFAULT_EPOCH) {
-    uint32_t this_hour = now / SECONDS_PER_HOUR;
-    this_hour *= SECONDS_PER_HOUR;
-
-    for (int h = 0; h < 2; h++) {
-      for (int i = 0; i < UPDATE_TIMES; i++) {
-        next = this_hour + h * SECONDS_PER_HOUR + update_times[i] * 60;
-        if (next > now) {
-          sleep_time = next - now;
-          h = 2;
-          break;
-        }
-      }
-    }
-  }
+  uint64_t sleep_time = 60;
 
   if (connectWiFi(wifi_count, wifi_networks, wifi_passwords)) {
     if (setRTC()) {
+
+      // Figure out which of the update_times[] array is the next minute
+      // past the hour at which the display should update.
+
+      uint32_t now = getRtcNow();
+      uint32_t next = now + sleep_time;
+
+      if (now < DEFAULT_EPOCH) {
+        uint32_t this_hour = now / SECONDS_PER_HOUR;
+        this_hour *= SECONDS_PER_HOUR;
+
+        for (int h = 0; h < 2; h++) {
+          for (int i = 0; i < UPDATE_TIMES; i++) {
+            next = this_hour + h * SECONDS_PER_HOUR + update_times[i] * 60;
+            if (next > now) {
+              h = 2;
+              break;
+            }
+          }
+        }
+      }
+
       if (ink.sdCardInit() != 0) {
         showWeather(now, next);
+
+        if (next > now) {
+          sleep_time = next - now;
+        }
       } else {
         fatal("SD card failed to initialize");
       }
@@ -96,7 +98,7 @@ void setup() {
   deepSleep(sleep_time);
 }
 
-// loop contains nothing because the entire sketch will be woken up 
+// loop contains nothing because the entire sketch will be woken up
 // in setup(), do work and then go to sleep again.
 void loop() {}
 
@@ -119,11 +121,11 @@ bool setRTC() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.cloudflare.com");
 
   int tries = 5;
-  
+
   while (tries > 0) {
     delay(2000);
     tries -= 1;
-    
+
     uint32_t fromntp = time(NULL);
 
     // If time from NTP doesn't look like it's been set then wait
@@ -131,7 +133,10 @@ bool setRTC() {
     if (fromntp < 1681141968) {
       continue;
     }
-    
+
+    Serial.print("Time from NTP: ");
+    Serial.println(fromntp);
+
     ink.rtcSetEpoch(fromntp);
     return true;
   }
@@ -147,22 +152,22 @@ uint32_t getRtcNow() {
 
 const char days[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
-// day converts a Unix epoch to the current day of the week taking into 
+// day converts a Unix epoch to the current day of the week taking into
 // account the timezone offset in hours.
 const char *day(uint32_t when, float offset) {
   when += int(offset * SECONDS_PER_HOUR);
-  int dow = int(floor(when/SECONDS_PER_DAY)+4)%7;
+  int dow = int(floor(when / SECONDS_PER_DAY) + 4) % 7;
   return days[dow];
 }
 
 #define HHMM_SIZE 6
 
-// hhmm converts a Unix epoch to hh:mm taking into account the timezone 
+// hhmm converts a Unix epoch to hh:mm taking into account the timezone
 // offset in hours. out just be at least HHMM_SIZE.
 void hhmm(uint32_t when, float offset, char *out) {
   when += int(offset * SECONDS_PER_HOUR);
-  int hh = int(floor(when/SECONDS_PER_HOUR))%24;
-  int mm = int(floor(when/60))%60;
+  int hh = int(floor(when / SECONDS_PER_HOUR)) % 24;
+  int mm = int(floor(when / 60)) % 60;
   sprintf(out, "%02d:%02d", hh, mm);
 }
 
@@ -170,9 +175,9 @@ void hhmm(uint32_t when, float offset, char *out) {
 // of the text, the text and font. Plus two parameters wm and hm which
 // are multipliers to apply to the width and height of the text being
 // printed. If the width and height are w and h then this will calculate
-// x + wm*w, y + hm*h. 
+// x + wm*w, y + hm*h.
 void prHelper(int16_t x, int16_t y, const char *text, const GFXfont *f,
-  float wm = 0, float hm = 0) {
+              float wm = 0, float hm = 0) {
   int16_t x1;
   int16_t y1;
   uint16_t w;
@@ -180,8 +185,8 @@ void prHelper(int16_t x, int16_t y, const char *text, const GFXfont *f,
   ink.setFont(f);
   ink.setTextSize(1);
   ink.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
-  ink.setCursor(x+w*wm, y+h*hm);
-  ink.print(text);  
+  ink.setCursor(x + w * wm, y + h * hm);
+  ink.print(text);
 }
 
 // pr writes text at (x, y) with font f.
@@ -189,7 +194,7 @@ void pr(int16_t x, int16_t y, const char *text, const GFXfont *f) {
   prHelper(x, y, text, f);
 }
 
- // centre centres a piece of text at the x, y position.
+// centre centres a piece of text at the x, y position.
 void centre(int16_t x, int16_t y, const char *text, const GFXfont *f) {
   prHelper(x, y, text, f, -0.5);
 }
@@ -201,7 +206,7 @@ void right(int16_t x, int16_t y, const char *text, const GFXfont *f) {
 
 // flushRight right-justifies text at the y position with size s.
 void flushRight(int16_t y, const char *text, const GFXfont *f) {
-  prHelper(ink.width()-20, y, text, f, -1);
+  prHelper(ink.width() - 20, y, text, f, -1);
 }
 
 #define SMALL_IMAGE 43
@@ -215,11 +220,11 @@ void centreIcon(int16_t x, int16_t y, const char *img, int16_t s) {
   sprintf(tmp, "%s-%d.png", img, s);
 
   // This assumes that icon are squares
-  
-  ink.drawImage(tmp, x-s/2, y-s/2);
+
+  ink.drawImage(tmp, x - s / 2, y - s / 2);
 }
 
-// drawRectangle draws a rectangle given the top left corner and 
+// drawRectangle draws a rectangle given the top left corner and
 // width and height. We don't use the built in ink.drawRect because
 // the lines are thinner than a one pixel line drawn by drawThickLine.
 void drawRectangle(int16_t x0, int16_t y0, int16_t w, int16_t h) {
@@ -234,15 +239,15 @@ void drawRectangle(int16_t x0, int16_t y0, int16_t w, int16_t h) {
 #define TEMP_SIZE 6
 
 // roundTemp rounds a floating point temperature and write to a string
-// that contains the temperature. out must be at least TEMP_SIZE. 
+// that contains the temperature. out must be at least TEMP_SIZE.
 void roundTemp(float t, char *out) {
 
-  // Temperatures are rounded up if above 0 and down if below 0. 
-  // Example: 1.4C becomes 1C, 1.6C becomes 2C, -0.4C becomes 0C, 
+  // Temperatures are rounded up if above 0 and down if below 0.
+  // Example: 1.4C becomes 1C, 1.6C becomes 2C, -0.4C becomes 0C,
   // -1.7C becomes -2C.
-  
+
   if (t >= 0) {
-    t += 0.5; 
+    t += 0.5;
   } else {
     t -= 0.5;
   }
@@ -321,14 +326,14 @@ String callAPI(char *exclude, uint32_t when) {
 
   while (tries > 0) {
     tries -= 1;
-    
+
     if (http.begin(tls, api)) {
       code = http.GET();
       if (code == HTTP_CODE_OK) {
         return http.getString();
       }
     }
-    
+
     delay(2000);
   }
 
@@ -351,11 +356,11 @@ void showWeather(uint32_t update_time, uint32_t next) {
   uint32_t now = getRtcNow();
 
   // This means that clock hasn't been set
-  
+
   if (now >= 3029529605) {
     return;
   }
-  
+
   String response = callAPI("currently,minutely,hourly,daily,alerts", 0);
   if (response == "") {
     return;
@@ -365,7 +370,7 @@ void showWeather(uint32_t update_time, uint32_t next) {
   // a String which will get duplicated by deserializeJson. Size
   // determined using https://arduinojson.org/v6/assistant/#/step1
 
-  StaticJsonDocument<768> jsonTiming;
+  StaticJsonDocument<1536> jsonTiming;
   DeserializationError err = deserializeJson(jsonTiming, response);
 
   if (err) {
@@ -389,10 +394,10 @@ void showWeather(uint32_t update_time, uint32_t next) {
 
   // Do not be tempted to remove these two lines. This is integer division so this is used
   // for rounding!
-  
+
   now /= SECONDS_PER_DAY;
   now *= SECONDS_PER_DAY;
-  
+
   uint32_t midnight = now - int(offset * SECONDS_PER_HOUR);
   seconds_since_midnight -= midnight;
 
@@ -408,14 +413,14 @@ void showWeather(uint32_t update_time, uint32_t next) {
 
   DynamicJsonDocument doc(32768);
   err = deserializeJson(doc, response);
-  
+
   if (err) {
     fatal("Deserialize JSON failed " + String(err.c_str()));
     return;
   }
 
   int i = 0;
-  
+
   JsonObject hourly = doc["hourly"];
   for (JsonObject hourly_data_item : hourly["data"].as<JsonArray>()) {
     hours[i].when = hourly_data_item["time"];
@@ -433,10 +438,10 @@ void showWeather(uint32_t update_time, uint32_t next) {
   if (response == "") {
     return;
   }
-  
+
   doc.clear();
   err = deserializeJson(doc, response);
-  
+
   if (err) {
     fatal("Deserialize JSON failed " + String(err.c_str()));
     return;
@@ -452,9 +457,9 @@ void showWeather(uint32_t update_time, uint32_t next) {
     }
   }
 
-  // Step 4. 
+  // Step 4.
   //
-  // Draw the hourly data on screen and since the last API call included the data 
+  // Draw the hourly data on screen and since the last API call included the data
   // for the next 7 days draw the daily forecast as well.
 
   int16_t bar_start_x = 50;
@@ -462,74 +467,74 @@ void showWeather(uint32_t update_time, uint32_t next) {
 
   // This ensure that the bar_width is a multiple of 24 so that the hours are spaced
   // at an integer number of pixels.
-  
-  int16_t bar_width = ink.width() - 2*bar_start_x;
+
+  int16_t bar_width = ink.width() - 2 * bar_start_x;
   int16_t temp_bar_width = bar_width;
   bar_width /= 24;
   int16_t bar_hour_spacing = bar_width;
   bar_width *= 24;
 
-  bar_start_x += (temp_bar_width - bar_width)/2;
+  bar_start_x += (temp_bar_width - bar_width) / 2;
 
   int16_t bar_height = 100;
   int16_t bar_gap = 100;
 
-  drawRectangle(bar_start_x, bar_start_y,                    bar_width, bar_height);
-  drawRectangle(bar_start_x, bar_start_y+bar_height+bar_gap, bar_width, bar_height);
+  drawRectangle(bar_start_x, bar_start_y,                        bar_width, bar_height);
+  drawRectangle(bar_start_x, bar_start_y + bar_height + bar_gap, bar_width, bar_height);
 
   // This draws a marker showing the current time relative to the today weather forecast
 
   uint32_t now_offset = ((uint32_t)bar_width * seconds_since_midnight) / SECONDS_PER_DAY;
   int16_t now_x = bar_start_x + now_offset;
-  ink.fillTriangle(now_x-3, bar_start_y-7, now_x+3, bar_start_y-6, now_x, bar_start_y-1, 1);
-    
+  ink.fillTriangle(now_x - 3, bar_start_y - 7, now_x + 3, bar_start_y - 6, now_x, bar_start_y - 1, 1);
+
   ink.setTextColor(0, 7);
-  pr(bar_start_x, bar_start_y-7, "Today", fontMedium);
-  pr(bar_start_x, bar_start_y+bar_height+bar_gap-7, "Tomorrow", fontMedium);
-  
+  pr(bar_start_x, bar_start_y - 7, "Today", fontMedium);
+  pr(bar_start_x, bar_start_y + bar_height + bar_gap - 7, "Tomorrow", fontMedium);
+
   int16_t bar_y = bar_start_y;
   int16_t bar_x = bar_start_x;
   int16_t short_tick = 5;
   int16_t long_tick = 10;
 
   int16_t last_x = -1;
-  char last[128];  
+  char last[128];
   for (i = 0; i < 48; i++) {
-    ink.drawThickLine(bar_x, bar_y+bar_height, bar_x,
-      bar_y+bar_height+((i%2==0)?short_tick:long_tick), 0, 1);
-    
-    if ((i % 2) == 0) {  
+    ink.drawThickLine(bar_x, bar_y + bar_height, bar_x,
+                      bar_y + bar_height + ((i % 2 == 0) ? short_tick : long_tick), 0, 1);
+
+    if ((i % 2) == 0) {
       char hour[HHMM_SIZE];
       hhmm(hours[i].when, offset, &hour[0]);
       char temp[TEMP_SIZE];
       roundTemp(hours[i].temperature, &temp[0]);
       if (i == 0) {
-        pr(bar_x, bar_y+bar_height+short_tick+12, hour, fontSmall);        
-        pr(bar_x, bar_y+bar_height+short_tick+36, temp, fontMedium);
+        pr(bar_x, bar_y + bar_height + short_tick + 12, hour, fontSmall);
+        pr(bar_x, bar_y + bar_height + short_tick + 36, temp, fontMedium);
       } else {
-        centre(bar_x, bar_y+bar_height+short_tick+12, hour, fontSmall);
-        centre(bar_x, bar_y+bar_height+short_tick+36, temp, fontMedium);
+        centre(bar_x, bar_y + bar_height + short_tick + 12, hour, fontSmall);
+        centre(bar_x, bar_y + bar_height + short_tick + 36, temp, fontMedium);
       }
       ink.print("\xba");
-    }  
+    }
 
     if (last_x == -1) {
       strcpy(last, hours[i].icon);
       last_x = bar_x;
     } else {
       if (strcmp(last, hours[i].icon) != 0) {
-        ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+bar_height, 0, 1);
-        centreIcon(last_x + (bar_x - last_x)/2, bar_y+bar_height/2, last, SMALL_IMAGE);
+        ink.drawThickLine(bar_x, bar_y, bar_x, bar_y + bar_height, 0, 1);
+        centreIcon(last_x + (bar_x - last_x) / 2, bar_y + bar_height / 2, last, SMALL_IMAGE);
         strcpy(last, hours[i].icon);
         last_x = bar_x;
       }
     }
 
     bar_x += bar_hour_spacing;
-    if ((i%24) == 23) {
-      centreIcon(last_x + (bar_x - last_x)/2, bar_y+bar_height/2, last, SMALL_IMAGE);      
+    if ((i % 24) == 23) {
+      centreIcon(last_x + (bar_x - last_x) / 2, bar_y + bar_height / 2, last, SMALL_IMAGE);
       bar_x = bar_start_x;
-      bar_y += bar_height+bar_gap;
+      bar_y += bar_height + bar_gap;
       last_x = -1;
     }
   }
@@ -541,18 +546,18 @@ void showWeather(uint32_t update_time, uint32_t next) {
 
   bar_x = bar_start_x;
   drawRectangle(bar_x, bar_y, bar_width, bar_height);
-  pr(bar_x, bar_y-7, "Next 7 Days", fontMedium);
+  pr(bar_x, bar_y - 7, "Next 7 Days", fontMedium);
 
   int count = 0;
   JsonObject daily = doc["daily"];
   for (JsonObject daily_data_item : daily["data"].as<JsonArray>()) {
-    ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+bar_height, 0, 1);
-    
+    ink.drawThickLine(bar_x, bar_y, bar_x, bar_y + bar_height, 0, 1);
+
     const char* icon = daily_data_item["icon"];
-    centreIcon(bar_x + bar_day_spacing/2, bar_y+bar_height/2, icon, SMALL_IMAGE);
+    centreIcon(bar_x + bar_day_spacing / 2, bar_y + bar_height / 2, icon, SMALL_IMAGE);
 
     uint32_t when = daily_data_item["time"];
-    centre(bar_x + bar_day_spacing/2, bar_y+bar_height+22, day(when, offset), fontMedium);
+    centre(bar_x + bar_day_spacing / 2, bar_y + bar_height + 22, day(when, offset), fontMedium);
 
     char high[TEMP_SIZE];
     roundTemp(daily_data_item["temperatureHigh"], &high[0]);
@@ -563,11 +568,11 @@ void showWeather(uint32_t update_time, uint32_t next) {
     // that this causes the temperature digits to be centered and looks better. If the
     // symbol is included in the centred string it doesn't look as good on screen.
 
-    centre(bar_x + bar_day_spacing/2, bar_y+21, high, fontMedium);
+    centre(bar_x + bar_day_spacing / 2, bar_y + 21, high, fontMedium);
     ink.print("\xba");
-    centre(bar_x + bar_day_spacing/2, bar_y+bar_height-5, low, fontMedium);
+    centre(bar_x + bar_day_spacing / 2, bar_y + bar_height - 5, low, fontMedium);
     ink.print("\xba");
-    
+
     bar_x += bar_day_spacing;
     count += 1;
     if (count == 7) {
@@ -587,7 +592,7 @@ void showWeather(uint32_t update_time, uint32_t next) {
 
   doc.clear();
   err = deserializeJson(doc, response);
-  
+
   if (err) {
     fatal("Deserialize JSON failed " + String(err.c_str()));
     return;
@@ -596,12 +601,12 @@ void showWeather(uint32_t update_time, uint32_t next) {
   int16_t bar_spacing = 50;
   int16_t new_width = bar_width - bar_spacing;
   new_width /= 60;
-  new_width *= 60;  
+  new_width *= 60;
   bar_x = bar_start_x + bar_width + bar_spacing + (bar_width - new_width - bar_spacing);
   bar_width = new_width;
-  int16_t rain_width = bar_width/60;
+  int16_t rain_width = bar_width / 60;
   drawRectangle(bar_x, bar_y, bar_width, bar_height);
-  pr(bar_x, bar_y-6, "Rain Next 60 Minutes", fontMedium);
+  pr(bar_x, bar_y - 6, "Rain Next 60 Minutes", fontMedium);
 
   float max_rain = 4;
 
@@ -615,7 +620,7 @@ void showWeather(uint32_t update_time, uint32_t next) {
     }
 
     if (rain > 0) {
-      ink.drawThickLine(bar_x, bar_y, bar_x, bar_y+(bar_height*(rain/max_rain)), 0, 1);
+      ink.drawThickLine(bar_x, bar_y, bar_x, bar_y + (bar_height * (rain / max_rain)), 0, 1);
     }
 
     if ((count % 10) == 0) {
@@ -623,16 +628,16 @@ void showWeather(uint32_t update_time, uint32_t next) {
       char temp[TEMP_SIZE];
       hhmm(when, offset, &temp[0]);
       if (count == 0) {
-        pr(bar_x, bar_y+bar_height+short_tick+11, temp, fontSmall);
+        pr(bar_x, bar_y + bar_height + short_tick + 11, temp, fontSmall);
       } else if (count == 60) {
-        right(bar_x, bar_y+bar_height+short_tick+11, temp, fontSmall);
+        right(bar_x, bar_y + bar_height + short_tick + 11, temp, fontSmall);
       } else {
-        centre(bar_x, bar_y+bar_height+short_tick+11, temp, fontSmall);
+        centre(bar_x, bar_y + bar_height + short_tick + 11, temp, fontSmall);
       }
       if (count == 30) {
         centre_x = bar_x;
       }
-      ink.drawThickLine(bar_x, bar_y+bar_height, bar_x, bar_y+bar_height+short_tick, 0, 1);        
+      ink.drawThickLine(bar_x, bar_y + bar_height, bar_x, bar_y + bar_height + short_tick, 0, 1);
     }
 
     count += 1;
@@ -645,7 +650,7 @@ void showWeather(uint32_t update_time, uint32_t next) {
   // was last checked and local observations (weather and temperature).
 
   JsonObject currently = doc["currently"];
-  const char *icon = currently["icon"]; 
+  const char *icon = currently["icon"];
   float c = currently["temperature"];
   uint32_t when = currently["time"];
 
@@ -656,9 +661,9 @@ void showWeather(uint32_t update_time, uint32_t next) {
   hhmm(update_time, offset, &hm[0]);
   char subtitle[80];
   sprintf(subtitle, "Forecast checked at %s. It's %s\xba right now.", hm, temp);
-  
+
   pr(200, 150, subtitle, fontLarge);
-  centreIcon(bar_start_x+64, 100, icon, LARGE_IMAGE);
+  centreIcon(bar_start_x + 64, 100, icon, LARGE_IMAGE);
 
   // Step 7.
   //
@@ -671,11 +676,11 @@ void showWeather(uint32_t update_time, uint32_t next) {
 
   JsonObject flags = doc["flags"];
   const char *version = flags["version"];
-  
+
   char status_bar[255];
-  sprintf(status_bar, "Updated: %s - Next update: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv - API %s", 
-    hmnow, hmnext, tz, offset, ink.readTemperature(), ink.readBattery(), version);
-  centre(ink.width()/2, ink.height()-75, status_bar, fontSmall);
+  sprintf(status_bar, "Updated: %s - Next update: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv - API %s",
+          hmnow, hmnext, tz, offset, ink.readTemperature(), ink.readBattery(), version);
+  centre(ink.width() / 2, ink.height() - 75, status_bar, fontSmall);
 
   show();
 }
@@ -704,7 +709,7 @@ void fatal(String s) {
 
 // deepSleep puts the device into deep sleep mode for sleep_time
 // seconds. When it wakes up setup() will be called.
-void deepSleep(uint32_t sleep_time) {
+void deepSleep(uint64_t sleep_time) {
 
   // This is needed for Inkplate 10's that use the ESP32 WROVER-E
   // in order to reduce power consumption during sleep.
@@ -715,10 +720,5 @@ void deepSleep(uint32_t sleep_time) {
   // interval (in microseconds) and then goes to sleep.
 
   esp_sleep_enable_timer_wakeup(sleep_time * 1000000);
-
-  // This makes the wake up button work
-
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, LOW);
-  
   esp_deep_sleep_start();
 }
