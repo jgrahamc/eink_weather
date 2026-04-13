@@ -2,11 +2,10 @@
 // Pirate Weather API to get a weather forecast for a given latitude
 // and longitude and display it.
 //
-// Copyright (c) 2023 John Graham-Cumming
+// Copyright (c) 2023-2026 John Graham-Cumming
 
 #include <Inkplate.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <driver/rtc_io.h>
 #include <ArduinoJson.h>
@@ -678,8 +677,8 @@ void showWeather(uint32_t update_time, uint32_t next) {
   const char *version = flags["version"];
 
   char status_bar[255];
-  sprintf(status_bar, "Updated: %s - Next update: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv - API %s",
-          hmnow, hmnext, tz, offset, ink.readTemperature(), ink.readBattery(), version);
+  sprintf(status_bar, "Updated: %s - Next update: %s - Time zone: %s (%.1f) - Temperature: %d\xba - Battery: %.1fv - API: %s - Network: %s",
+          hmnow, hmnext, tz, offset, ink.readTemperature(), ink.readBattery(), version, WiFi.SSID());
   centre(ink.width() / 2, ink.height() - 75, status_bar, fontSmall);
 
   show();

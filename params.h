@@ -1,8 +1,8 @@
 // WiFi networks (SSID (network name) and password)
 
 const int wifi_count = 1;
-const char *wifi_networks[1]  = {"TODO"};
-const char *wifi_passwords[1] = {"TODO"};
+const char *wifi_networks[wifi_count]  = {"TODO"};
+const char *wifi_passwords[wifi_count] = {"TODO"};
 
 // When to take up to check the weather forecast. This is an
 // array of the minutes within an hour when the display should
